@@ -1,8 +1,8 @@
 import { Module } from "@nestjs/common";
+import { AiService } from "./services";
 
 @Module({
-  imports: [
-    
-  ],
+  imports: [],
+  providers: [AiService],
 })
 export class AiModule {}

@@ -1,7 +1,7 @@
 import { Module } from "@nestjs/common";
 import { AiModule } from "./ai";
 import { SearchModule } from "./search";
-import { SongsModule } from "./songs";
+import { SongModule } from "./songs";
 import { SessionModule } from "./session";
 import { LyricsModule } from "./lyrics";
 
@@ -11,7 +11,7 @@ import { LyricsModule } from "./lyrics";
     LyricsModule,
     SearchModule,
     SessionModule,
-    SongsModule
+    SongModule
   ],
 })
 export class ApiModule {}

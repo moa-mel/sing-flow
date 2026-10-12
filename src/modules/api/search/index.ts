@@ -1,8 +1,8 @@
 import { Module } from "@nestjs/common";
+import { SearchService } from "./services";
 
 @Module({
-  imports: [
-    
-  ],
+  imports: [],
+  providers: [SearchService],
 })
 export class SearchModule {}
