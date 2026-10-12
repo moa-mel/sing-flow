@@ -1,0 +1,38 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Song {
+  id        String   @id @default(cuid())
+  title     String
+  author    String?
+  lines     Line[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([title])
+}
+
+model Line {
+  id         String  @id @default(cuid())
+  song       Song    @relation(fields: [songId], references: [id], onDelete: Cascade)
+  songId     String
+  position   Int
+  text       String
+  /// lowercase, punctuation-free copy of `text`, used for fuzzy voice search
+  normalized String
+  /// optional label such as "Verse 1" or "Chorus"
+  section    String?
+
+  @@unique([songId, position])
+  @@index([normalized(ops: raw("gin_trgm_ops"))], type: Gin)
+}
