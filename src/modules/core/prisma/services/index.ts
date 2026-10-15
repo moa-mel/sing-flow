@@ -1,7 +1,7 @@
 import { INestApplication, Injectable, OnModuleInit } from "@nestjs/common";
 import { PrismaPg } from "@prisma/adapter-pg";
-import logger from 'moment-logger';
 import { PrismaClient } from "@prisma/client";
+import logger from 'moment-logger';
 import { Pool } from "pg";
 
 

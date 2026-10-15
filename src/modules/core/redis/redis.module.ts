@@ -5,6 +5,9 @@ import { ConfigModule, ConfigService } from "@nestjs/config";
 
 const logger = new Logger('RedisIntegration');
 
+
+export const REDIS = Symbol('REDIS');
+
 @Global()
 @Module({
   imports: [
