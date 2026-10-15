@@ -1,13 +1,12 @@
-import { PrismaService } from "@/modules/core/prisma/services";
-import { Inject, Injectable } from "@nestjs/common";
+import { Injectable } from "@nestjs/common";
 import { SessionStateDto } from "../dtos";
 import { TTL_SECONDS } from "@/config/constant";
 import Redis from "ioredis";
-import { REDIS } from "@/modules/core/redis/redis.module";
+import { InjectRedis } from "@nestjs-modules/ioredis";
 
 @Injectable()
 export class SessionService {
-    constructor(@Inject(REDIS) private readonly redis: Redis) { }
+    constructor(@InjectRedis() private readonly redis: Redis) { }
 
     private key(sessionId: string) {
         return `session:${sessionId}`;

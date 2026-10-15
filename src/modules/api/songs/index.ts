@@ -4,7 +4,8 @@ import { SongService } from "./services";
 
 @Module({
   imports: [],
-   providers: [SongService],
+  providers: [SongService],
+  exports: [SongService],
   controllers: [SongController],
 })
 export class SongModule {}

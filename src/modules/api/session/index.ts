@@ -4,5 +4,6 @@ import { SessionService } from "./services";
 @Module({
   imports: [],
   providers: [SessionService],
+  exports: [SessionService],
 })
-export class SessionModule {}
+export class SessionModule { }
