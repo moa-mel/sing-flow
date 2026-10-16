@@ -14,7 +14,12 @@ export class SessionService {
 
     async get(sessionId: string): Promise<SessionStateDto> {
         const h = await this.redis.hgetall(this.key(sessionId));
-        return { songId: h.songId || null, lineIndex: Number(h.lineIndex ?? 0) };
+        return {
+            songId: h.songId != null && h.songId !== ""
+                ? Number(h.songId)
+                : null,
+            lineIndex: Number(h.lineIndex ?? 0),
+        };
     }
 
     async set(sessionId: string, state: SessionStateDto): Promise<void> {

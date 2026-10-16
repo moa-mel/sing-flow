@@ -121,10 +121,9 @@ export class LyricsGateway implements OnGatewayDisconnect {
                     this.onTranscript(sessionId, result),
                 ).catch((error: unknown) => {
                     this.logger.error(
-                        `Transcript handling failed: ${
-                            error instanceof Error
-                                ? error.message
-                                : String(error)
+                        `Transcript handling failed: ${error instanceof Error
+                            ? error.message
+                            : String(error)
                         }`,
                     );
                 });
@@ -185,7 +184,10 @@ export class LyricsGateway implements OnGatewayDisconnect {
         body: { songId: string | null; lineIndex?: number },
     ) {
         return this.manual(client, (state) => {
-            state.songId = body?.songId ?? null;
+            state.songId =
+                body?.songId != null && body.songId !== ""
+                    ? Number(body.songId)
+                    : null;
             state.lineIndex = body?.lineIndex ?? 0;
         });
     }
@@ -218,7 +220,7 @@ export class LyricsGateway implements OnGatewayDisconnect {
 
     private async onTranscript(
         sessionId: string,
-        result: AiResultDto ,
+        result: AiResultDto,
     ) {
         const runtime = this.rt(sessionId);
         const room = this.room(sessionId);
@@ -323,10 +325,10 @@ export class LyricsGateway implements OnGatewayDisconnect {
 
             state.lineIndex = song
                 ? clamp(
-                      state.lineIndex,
-                      0,
-                      Math.max(0, song.lines.length - 1),
-                  )
+                    state.lineIndex,
+                    0,
+                    Math.max(0, song.lines.length - 1),
+                )
                 : 0;
 
             await this.sessions.set(sessionId, state);

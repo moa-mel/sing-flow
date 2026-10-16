@@ -8,8 +8,8 @@ import {
 import { Type } from "class-transformer";
 
 export class SearchHitDto {
-    @IsString()
-    songId!: string;
+    @IsNumber()
+    songId!: number;
 
     @IsString()
     title!: string;
@@ -39,7 +39,7 @@ export class SearchResultDto {
 }
 
 export interface Candidate {
-    songId: string;
+    songId: number;
     title: string;
     position: number;
     normalized: string;

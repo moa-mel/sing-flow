@@ -33,7 +33,7 @@ export class SearchService {
         LIMIT 25`,
     ]);
 
-    const bestPerSong = new Map<string, SearchHitDto>();
+    const bestPerSong = new Map<number, SearchHitDto>();
     for (const row of rows) {
       const lw = row.normalized.split(' ').filter(Boolean);
       const n = Math.min(heard.length, lw.length);

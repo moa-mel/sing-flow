@@ -1,8 +1,8 @@
 import { IsNumber, IsString } from "class-validator";
 
 export class SessionStateDto {
-    @IsString()
-    songId: string | null;
+    @IsNumber()
+    songId: number | null;
 
     @IsNumber()
     lineIndex: number;
