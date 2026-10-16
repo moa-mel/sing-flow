@@ -40,5 +40,5 @@ COPY --from=build /usr/src/app/node_modules/@prisma/client /usr/src/app/node_mod
 COPY --from=build /usr/src/app/dist ./dist
 
 # Start the app
-CMD ["node", "dist/src/main.js"]
+CMD ["node", "dist/main.js"]
 
