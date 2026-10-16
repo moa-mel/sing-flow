@@ -12,7 +12,7 @@ datasource db {
 }
 
 model Song {
-  id        String   @id @default(cuid())
+  id             Int     @id @default(autoincrement())
   title     String
   author    String?
   lines     Line[]
@@ -23,9 +23,9 @@ model Song {
 }
 
 model Line {
-  id         String  @id @default(cuid())
+  id         Int     @id @default(autoincrement())
   song       Song    @relation(fields: [songId], references: [id], onDelete: Cascade)
-  songId     String
+  songId     Int
   position   Int
   text       String
   /// lowercase, punctuation-free copy of `text`, used for fuzzy voice search

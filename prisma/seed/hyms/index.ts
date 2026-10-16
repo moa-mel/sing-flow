@@ -4,7 +4,6 @@ export const normalize = (s: string) =>
 
 export const songs = [
   {
-    id: 'all-hail-the-power-of-jesus-name',
     title: "All Hail the Power of Jesus' Name",
     author: 'Edward Perronet',
     lines: [
@@ -35,7 +34,6 @@ export const songs = [
     ],
   },
   {
-    id: 'the-old-rugged-cross',
     title: 'The Old Rugged Cross',
     author: 'George Bennard',
     // Partial: add remaining verses from a licensed source (still in copyright in many countries).
@@ -59,7 +57,6 @@ export const songs = [
     ],
   },
   {
-    id: 'stand-up-for-jesus',
     title: 'Stand Up, Stand Up for Jesus',
     author: 'George Duffield Jr.',
     lines: [
@@ -106,7 +103,6 @@ export const songs = [
     ],
   },
   {
-    id: 'amazing-grace',
     title: 'Amazing Grace',
     author: 'John Newton',
     lines: [

@@ -8,10 +8,9 @@ const prisma = new PrismaClient({ adapter });
 
 async function main() {
   for (const s of songs) {
-    if (await prisma.song.findUnique({ where: { id: s.id } })) continue;
+    if (await prisma.song.findFirst({ where: { title: s.title } })) continue;
     await prisma.song.create({
       data: {
-        id: s.id,
         title: s.title,
         author: s.author,
         lines: {

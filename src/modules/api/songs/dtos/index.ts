@@ -1,29 +1,41 @@
 import {
     IsArray,
+    IsNumber,
     IsOptional,
     IsString,
 } from "class-validator";
 
 export class SongDto {
-    @IsString()
-    id!: string;
+    @IsNumber()
+    @IsOptional()
+    id: number;
 
     @IsString()
-    title!: string;
+    @IsOptional()
+    title: string;
 
     @IsArray()
+    @IsOptional()
     @IsString({ each: true })
-    lines!: string[];
+    lines: string[];
 }
 
 export class SongInputDto {
     @IsString()
-    title!: string;
+    @IsOptional()
+    title: string;
 
     @IsOptional()
     @IsString()
     author?: string | null;
 
     @IsString()
-    lyrics!: string;
+    @IsOptional()
+    lyrics: string;
+}
+
+export class SongListDto {
+    @IsString()
+    @IsOptional()
+    title: string;
 }

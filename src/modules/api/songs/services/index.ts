@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "@/modules/core/prisma/services";
 import { normalize } from "@/utils/text";
-import { SongDto, SongInputDto } from "../dtos";
+import { SongDto, SongInputDto, SongListDto } from "../dtos";
 import { InjectRedis } from "@nestjs-modules/ioredis";
 import Redis from "ioredis";
 import { CACHE_TTL_SECONDS } from "@/config/constant";
@@ -11,9 +11,9 @@ export class SongService {
     constructor(
         private readonly prisma: PrismaService,
         @InjectRedis() private readonly redis: Redis,
-    ) {}
+    ) { }
 
-    private cacheKey(id: string): string {
+    private cacheKey(id: number): string {
         return `song:${id}`;
     }
 
@@ -29,7 +29,7 @@ export class SongService {
             }));
     }
 
-    async fetchSongs(id: string): Promise<SongDto> {
+    async fetchSongs(id: number): Promise<SongDto> {
         const cached = await this.redis.get(this.cacheKey(id));
 
         if (cached) {
@@ -63,10 +63,10 @@ export class SongService {
         return result;
     }
 
-    async listSongs(q?: string) {
+    async listSongs(options: SongListDto) {
         return this.prisma.song.findMany({
-            where: q
-                ? { title: { contains: q, mode: "insensitive" } }
+            where: options.title
+                ? { title: { contains: options.title, mode: "insensitive" } }
                 : undefined,
             select: {
                 id: true,
@@ -93,7 +93,7 @@ export class SongService {
     }
 
     async updateSongs(
-        id: string,
+        id: number,
         input: Partial<SongInputDto>,
     ): Promise<SongDto> {
         const existing = await this.prisma.song.findUnique({
@@ -141,7 +141,7 @@ export class SongService {
         return this.fetchSongs(id);
     }
 
-    async removeSongs(id: string): Promise<void> {
+    async removeSongs(id: number): Promise<void> {
         const existing = await this.prisma.song.findUnique({
             where: { id },
             select: { id: true },

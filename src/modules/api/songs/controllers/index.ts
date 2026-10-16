@@ -4,24 +4,25 @@ import {
     Delete,
     Get,
     Param,
+    ParseIntPipe,
     Patch,
     Post,
     Query,
 } from "@nestjs/common";
 import { SongService } from "../services";
-import { SongInputDto } from "../dtos";
+import { SongInputDto, SongListDto } from "../dtos";
 
 @Controller("songs")
 export class SongController {
     constructor(private readonly songService: SongService) {}
 
     @Get()
-    listSongs(@Query("q") q?: string) {
-        return this.songService.listSongs(q);
+    listSongs(@Query("dto") dto: SongListDto) {
+        return this.songService.listSongs(dto);
     }
 
     @Get(":id")
-    fetchSong(@Param("id") id: string) {
+    fetchSong(@Param("id", ParseIntPipe) id: number) {
         return this.songService.fetchSongs(id);
     }
 
@@ -32,14 +33,14 @@ export class SongController {
 
     @Patch(":id")
     updateSong(
-        @Param("id") id: string,
+        @Param("id", ParseIntPipe) id: number,
         @Body() input: Partial<SongInputDto>,
     ) {
         return this.songService.updateSongs(id, input);
     }
 
     @Delete(":id")
-    removeSong(@Param("id") id: string) {
+    removeSong(@Param("id", ParseIntPipe) id: number) {
         return this.songService.removeSongs(id);
     }
 }
