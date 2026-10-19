@@ -1,4 +1,6 @@
 import { IsIn, IsOptional, IsString } from "class-validator";
+import { SttResultDto } from "../../stt/dtos";
+import { SessionStateDto } from "../../session/dtos";
 
 export type Role = "operator" | "display";
 
@@ -23,4 +25,7 @@ export interface Runtime {
     offset: number;
     heardLen: number;
     queue: Promise<unknown>;
+    state?: SessionStateDto;
+    pending?: SttResultDto;
+    draining?: boolean;
 }

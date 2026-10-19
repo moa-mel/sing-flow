@@ -37,6 +37,10 @@ export class LyricsGateway implements OnGatewayDisconnect {
 
     private readonly logger = new Logger(LyricsGateway.name);
     private readonly runtimes = new Map<string, Runtime>();
+    private readonly songCache = new Map<
+        number,
+        Awaited<ReturnType<SongService["fetchSongs"]>>
+    >();
     private readonly operatorKey?: string;
 
     constructor(
@@ -117,16 +121,7 @@ export class LyricsGateway implements OnGatewayDisconnect {
 
         runtime.stream = this.stt.open(
             (result) => {
-                this.enqueue(sessionId, () =>
-                    this.onTranscript(sessionId, result),
-                ).catch((error: unknown) => {
-                    this.logger.error(
-                        `Transcript handling failed: ${error instanceof Error
-                            ? error.message
-                            : String(error)
-                        }`,
-                    );
-                });
+                void this.scheduleTranscript(sessionId, result);
             },
             (error) => {
                 this.logger.error(`STT error: ${error.message}`);
@@ -218,6 +213,46 @@ export class LyricsGateway implements OnGatewayDisconnect {
 
     // Transcript matching
 
+    /**
+     * Coalesce transcripts: if results arrive faster than we can
+     * process them, only the newest one is handled.
+     */
+    private async scheduleTranscript(
+        sessionId: string,
+        result: SttResultDto,
+    ) {
+        const runtime = this.rt(sessionId);
+
+        // Never overwrite a pending final with an interim
+        // (finals reset the offset).
+        if (!runtime.pending?.isFinal || result.isFinal) {
+            runtime.pending = result;
+        }
+
+        if (runtime.draining) return;
+        runtime.draining = true;
+
+        try {
+            while (runtime.pending) {
+                const next = runtime.pending;
+                runtime.pending = undefined;
+
+                await this.enqueue(sessionId, () =>
+                    this.onTranscript(sessionId, next),
+                );
+            }
+        } catch (error) {
+            this.logger.error(
+                `Transcript handling failed: ${error instanceof Error
+                    ? error.message
+                    : String(error)
+                }`,
+            );
+        } finally {
+            runtime.draining = false;
+        }
+    }
+
     private async onTranscript(
         sessionId: string,
         result: SttResultDto,
@@ -228,9 +263,13 @@ export class LyricsGateway implements OnGatewayDisconnect {
         this.server.to(room).emit("transcript", result);
 
         const heard = words(result.text);
+        this.logger.debug(
+            `[${result.isFinal ? "FINAL" : "interim"}] heard=${heard.length} offset=${runtime.offset} line=${(await this.getState(sessionId)).lineIndex} :: ${result.text}`,
+        );
         runtime.heardLen = heard.length;
 
-        const state = await this.sessions.get(sessionId);
+        // Work on a copy so the cache is only updated via saveState.
+        const state = { ...(await this.getState(sessionId)) };
         let changed = false;
 
         if (!state.songId) {
@@ -238,7 +277,7 @@ export class LyricsGateway implements OnGatewayDisconnect {
             const searchResult = await this.search.search(heard);
             const hit = searchResult.autoLoad;
             const song = hit
-                ? await this.songs.fetchSongs(hit.songId)
+                ? await this.getSong(hit.songId)
                 : undefined;
 
             if (hit && song) {
@@ -249,7 +288,7 @@ export class LyricsGateway implements OnGatewayDisconnect {
                     Math.max(0, song.lines.length - 1),
                 );
 
-                runtime.offset = heard.length + hit.remaining;
+                runtime.offset = heard.length;
                 changed = true;
             } else if (
                 result.isFinal &&
@@ -261,7 +300,7 @@ export class LyricsGateway implements OnGatewayDisconnect {
             }
         } else {
             // Advance through the currently selected song.
-            const song = await this.songs.fetchSongs(state.songId);
+            const song = await this.getSong(state.songId);
 
             if (song) {
                 const match = this.matching.advance(
@@ -281,16 +320,13 @@ export class LyricsGateway implements OnGatewayDisconnect {
         }
 
         if (result.isFinal) {
-            runtime.offset = Math.max(
-                0,
-                runtime.offset - heard.length,
-            );
-
+            // the next utterance starts with a fresh transcript
+            runtime.offset = 0;
             runtime.heardLen = 0;
         }
 
         if (changed) {
-            await this.sessions.set(sessionId, state);
+            this.saveState(sessionId, state);
             await this.broadcastState(sessionId);
         }
     }
@@ -311,12 +347,13 @@ export class LyricsGateway implements OnGatewayDisconnect {
         }
 
         return this.enqueue(sessionId, async () => {
-            const state = await this.sessions.get(sessionId);
+            // Copy so a failed command doesn't corrupt the cached state.
+            const state = { ...(await this.getState(sessionId)) };
 
             mutate(state);
 
             const song = state.songId
-                ? await this.songs.fetchSongs(state.songId)
+                ? await this.getSong(state.songId)
                 : undefined;
 
             if (state.songId && !song) {
@@ -331,7 +368,7 @@ export class LyricsGateway implements OnGatewayDisconnect {
                 )
                 : 0;
 
-            await this.sessions.set(sessionId, state);
+            this.saveState(sessionId, state);
 
             const runtime = this.rt(sessionId);
 
@@ -376,10 +413,46 @@ export class LyricsGateway implements OnGatewayDisconnect {
         return runtime;
     }
 
+    private async getSong(id: number) {
+        let song = this.songCache.get(id);
+
+        if (!song) {
+            song = await this.songs.fetchSongs(id);
+            if (song) this.songCache.set(id, song);
+        }
+
+        return song;
+    }
+
+    private async getState(sessionId: string) {
+        const runtime = this.rt(sessionId);
+
+        if (!runtime.state) {
+            runtime.state = await this.sessions.get(sessionId);
+        }
+
+        return runtime.state;
+    }
+
+    private saveState(sessionId: string, state: SessionStateDto) {
+        this.rt(sessionId).state = state;
+
+        // Persist in the background; don't block the broadcast.
+        void this.sessions
+            .set(sessionId, state)
+            .catch((e: unknown) =>
+                this.logger.error(
+                    `Persist failed: ${e instanceof Error ? e.message : String(e)
+                    }`,
+                ),
+            );
+    }
+
     private stopStream(runtime: Runtime) {
         runtime.stream?.close();
         runtime.stream = undefined;
         runtime.ownerSocketId = undefined;
+        runtime.pending = undefined;
     }
 
     private operatorSession(client: Socket): string | null {
@@ -393,10 +466,10 @@ export class LyricsGateway implements OnGatewayDisconnect {
     }
 
     private async buildState(sessionId: string) {
-        const state = await this.sessions.get(sessionId);
+        const state = await this.getState(sessionId);
 
         const song = state.songId
-            ? await this.songs.fetchSongs(state.songId)
+            ? await this.getSong(state.songId)
             : undefined;
 
         return {
