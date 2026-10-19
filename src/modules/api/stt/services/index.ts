@@ -1,17 +1,17 @@
 import { PrismaService } from "@/modules/core/prisma/services";
 import { Injectable, Logger } from "@nestjs/common";
-import { AiResultDto, AiStream } from "../dtos";
 import { ConfigService } from "@nestjs/config";
 import WebSocket from 'ws';
+import { SttResultDto, SttStream } from "../dtos";
 
 @Injectable()
-export class AiService {
+export class SttService {
 
-    private readonly logger = new Logger(AiService.name);
+    private readonly logger = new Logger(SttService.name);
 
     constructor(private readonly config: ConfigService) { }
 
-    open(onResult: (r: AiResultDto) => void, onError: (e: Error) => void): AiStream {
+    open(onResult: (r: SttResultDto) => void, onError: (e: Error) => void): SttStream {
         const apiKey = this.config.get<string>('DEEPGRAM_API_KEY');
         if (!apiKey) {
             queueMicrotask(() => onError(new Error('DEEPGRAM_API_KEY is not set')));

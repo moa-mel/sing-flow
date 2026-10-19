@@ -12,12 +12,12 @@ import { Namespace, Socket } from "socket.io";
 import { JoinBody, Runtime } from "../dtos";
 import { SessionService } from "../../session/services";
 import { SearchService } from "../../search/services";
-import { AiService } from "../../ai/services";
 import { MatchService } from "../../match/services";
 import { SongService } from "../../songs/services";
 import { words } from "@/utils/text";
-import { AiResultDto } from "../../ai/dtos";
 import { SessionStateDto } from "../../session/dtos";
+import { SttService } from "../../stt/services";
+import { SttResultDto } from "../../stt/dtos";
 
 const clamp = (n: number, min: number, max: number) =>
     Math.max(min, Math.min(max, n));
@@ -45,7 +45,7 @@ export class LyricsGateway implements OnGatewayDisconnect {
         private readonly songs: SongService,
         private readonly matching: MatchService,
         private readonly search: SearchService,
-        private readonly stt: AiService,
+        private readonly stt: SttService,
     ) {
         this.operatorKey =
             config.get<string>("OPERATOR_KEY") || undefined;
@@ -220,7 +220,7 @@ export class LyricsGateway implements OnGatewayDisconnect {
 
     private async onTranscript(
         sessionId: string,
-        result: AiResultDto,
+        result: SttResultDto,
     ) {
         const runtime = this.rt(sessionId);
         const room = this.room(sessionId);

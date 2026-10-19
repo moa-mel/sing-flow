@@ -5,8 +5,8 @@ import { SessionModule } from "../session";
 import { SongModule } from "../songs";
 import { MatchModule } from "../match";
 import { SearchModule } from "../search";
-import { AiModule } from "../ai";
-import { AiService } from "../ai/services";
+import { SttModule } from "../stt";
+import { SttService } from "../stt/services";
 
 @Module({
   imports: [
@@ -14,8 +14,8 @@ import { AiService } from "../ai/services";
     SongModule,
     MatchModule,
     SearchModule,
-    AiModule,
+    SttModule,
   ],
-  providers: [LyricsGateway, AiService],
+  providers: [LyricsGateway, SttService],
 })
 export class LyricsModule {}

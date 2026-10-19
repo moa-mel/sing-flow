@@ -1,14 +1,14 @@
 import { Module } from "@nestjs/common";
-import { AiModule } from "./ai";
 import { SearchModule } from "./search";
 import { SongModule } from "./songs";
 import { SessionModule } from "./session";
 import { LyricsModule } from "./lyrics";
 import { MatchModule } from "./match";
+import { SttModule } from "./stt";
 
 @Module({
   imports: [
-    AiModule,
+    SttModule,
     LyricsModule,
     MatchModule,
     SearchModule,

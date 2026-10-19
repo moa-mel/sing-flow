@@ -1,6 +1,6 @@
 import { IsBoolean, IsString } from "class-validator";
 
-export class AiResultDto {
+export class SttResultDto {
     @IsString()
     text!: string;
 
@@ -8,7 +8,7 @@ export class AiResultDto {
     isFinal!: boolean;
 }
 
-export interface AiStream {
+export interface SttStream {
     send(chunk: Buffer): void;
     close(): void;
 }
