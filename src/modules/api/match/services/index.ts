@@ -5,11 +5,11 @@ import { dice, words } from "@/utils/text";
 
 @Injectable()
 export class MatchService {
-    constructor(private prisma: PrismaService) {}
+    constructor(private prisma: PrismaService) { }
 
-    static readonly WINDOW = 3;            // current line + 3 ahead
-    static readonly ADVANCE_SIMILARITY = 0.7;
-    static readonly MIN_COVERAGE = 0.6;    // advance once ~60% of the line has been heard
+    static readonly WINDOW = 4;              // look a bit further ahead
+    static readonly ADVANCE_SIMILARITY = 0.55; // was 0.7 — advance earlier
+    static readonly MIN_COVERAGE = 0.4;       // was 0.6 — ~40% of the line is enough
     static readonly MIN_WORDS = 2;
 
     advance(lines: string[], current: number, heard: string[], offset: number): MatchResultDto {
@@ -27,13 +27,13 @@ export class MatchService {
             for (let k = 0; k <= MatchService.WINDOW && idx + k < lines.length; k++) {
                 const lw = words(lines[idx + k]);
                 if (lw.length === 0) continue;
-                
+
                 const n = Math.min(remaining.length, lw.length);
                 // FIX: Changed MatchingService to MatchService
                 if (n < MatchService.MIN_WORDS || n / lw.length < MatchService.MIN_COVERAGE) continue;
 
                 const sim = dice(remaining.slice(0, n).join(' '), lw.slice(0, n).join(' '));
-                
+
                 // FIX: Changed MatchingService to MatchService
                 if (sim >= MatchService.ADVANCE_SIMILARITY && (!best || sim > best.sim + 0.05)) {
                     best = { k, sim, lineWords: lw.length };
@@ -43,7 +43,7 @@ export class MatchService {
             if (!best) break;
 
             idx = Math.min(idx + best.k + 1, lines.length - 1);
-            
+
             // Count the whole line as used, even if we advanced early, so its tail words
             // aren't mistaken for the start of the next line.
             off += best.lineWords;
