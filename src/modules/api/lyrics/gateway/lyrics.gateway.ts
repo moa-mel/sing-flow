@@ -42,7 +42,11 @@ export class LyricsGateway implements OnGatewayDisconnect {
         Awaited<ReturnType<SongService["fetchSongs"]>>
     >();
     private readonly operatorKey?: string;
+
+    /** Max recent words kept for matching. */
     private static readonly MAX_HEARD = 24;
+    /** After picking a song, ignore leftover speech for this long (ms). */
+    private static readonly SETTLE_MS = 1500;
 
     constructor(
         config: ConfigService,
@@ -116,11 +120,12 @@ export class LyricsGateway implements OnGatewayDisconnect {
 
         this.stopStream(runtime);
 
-
         runtime.offset = 0;
         runtime.utter = [];
         runtime.last = [];
         runtime.dirty = false;
+        runtime.final = false;
+        runtime.holdUntil = 0;
         runtime.ownerSocketId = client.id;
 
         runtime.stream = this.stt.open(
@@ -182,6 +187,10 @@ export class LyricsGateway implements OnGatewayDisconnect {
         @MessageBody()
         body: { songId: string | null; lineIndex?: number },
     ) {
+        this.logger.log(
+            `song:select songId=${body?.songId} lineIndex=${body?.lineIndex}`,
+        );
+
         return this.manual(
             client,
             (state) => {
@@ -226,10 +235,6 @@ export class LyricsGateway implements OnGatewayDisconnect {
 
     // Transcript matching
 
-    /**
-     * Coalesce transcripts: if results arrive faster than we can
-     * process them, only the newest one is handled.
-     */
     /** Merge a result into the rolling word buffer. Loses nothing. */
     private ingest(sessionId: string, result: SttResultDto) {
         const runtime = this.rt(sessionId);
@@ -263,7 +268,10 @@ export class LyricsGateway implements OnGatewayDisconnect {
         if (result.isFinal) runtime.final = true;
     }
 
-    private async scheduleTranscript(sessionId: string, result: SttResultDto) {
+    private async scheduleTranscript(
+        sessionId: string,
+        result: SttResultDto,
+    ) {
         const runtime = this.rt(sessionId);
 
         this.ingest(sessionId, result);
@@ -274,11 +282,16 @@ export class LyricsGateway implements OnGatewayDisconnect {
         try {
             while (runtime.dirty) {
                 runtime.dirty = false;
-                await this.enqueue(sessionId, () => this.matchStep(sessionId));
+                await this.enqueue(sessionId, () =>
+                    this.matchStep(sessionId),
+                );
             }
         } catch (error) {
             this.logger.error(
-                `Transcript handling failed: ${error instanceof Error ? error.message : String(error)}`,
+                `Transcript handling failed: ${error instanceof Error
+                    ? error.message
+                    : String(error)
+                }`,
             );
         } finally {
             runtime.draining = false;
@@ -297,6 +310,7 @@ export class LyricsGateway implements OnGatewayDisconnect {
         let changed = false;
 
         if (!state.songId) {
+            // No song selected: identify it by voice.
             const searchResult = await this.search.search(heard);
             const hit = searchResult.autoLoad;
             const song = hit ? await this.getSong(hit.songId) : undefined;
@@ -311,9 +325,12 @@ export class LyricsGateway implements OnGatewayDisconnect {
                 runtime.offset = heard.length;
                 changed = true;
             } else if (isFinal && searchResult.hits.length > 0) {
-                this.server.to(room).emit("search:suggestions", searchResult.hits);
+                this.server
+                    .to(room)
+                    .emit("search:suggestions", searchResult.hits);
             }
-        } else {
+        } else if (Date.now() >= (runtime.holdUntil ?? 0)) {
+            // Song selected: advance through it (after the settle period).
             const song = await this.getSong(state.songId);
 
             if (song) {
@@ -342,6 +359,7 @@ export class LyricsGateway implements OnGatewayDisconnect {
             await this.broadcastState(sessionId);
         }
     }
+
     // Helpers
 
     private manual(
@@ -385,10 +403,12 @@ export class LyricsGateway implements OnGatewayDisconnect {
             const runtime = this.rt(sessionId);
 
             if (resetHeard) {
-                // New song: forget everything heard so far.
+                // New song: forget words heard so far, but keep runtime.last
+                // so ingest() keeps stripping the part of the running
+                // transcript that was already there before the click.
                 runtime.utter = [];
-                runtime.last = [];
                 runtime.offset = 0;
+                runtime.holdUntil = Date.now() + LyricsGateway.SETTLE_MS;
             } else {
                 // Manual navigation: ignore words already heard.
                 runtime.offset = runtime.utter?.length ?? 0;
@@ -422,7 +442,6 @@ export class LyricsGateway implements OnGatewayDisconnect {
         if (!runtime) {
             runtime = {
                 offset: 0,
-                heardLen: 0,
                 queue: Promise.resolve(),
             };
 

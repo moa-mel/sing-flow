@@ -23,13 +23,13 @@ export interface Runtime {
     };
     ownerSocketId?: string;
     offset: number;
-    heardLen: number;
     queue: Promise<unknown>;
     state?: SessionStateDto;
-    pending?: SttResultDto;
     draining?: boolean;
     utter?: string[];   // rolling buffer of recent words
     last?: string[];    // previous raw result, used to detect cumulative text
     dirty?: boolean;
     final?: boolean;
+    holdUntil?: number; // ms timestamp; ignore matching until then
 }
+
