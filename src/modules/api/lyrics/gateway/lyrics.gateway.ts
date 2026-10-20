@@ -182,13 +182,22 @@ export class LyricsGateway implements OnGatewayDisconnect {
         @MessageBody()
         body: { songId: string | null; lineIndex?: number },
     ) {
-        return this.manual(client, (state) => {
-            state.songId =
-                body?.songId != null && body.songId !== ""
-                    ? Number(body.songId)
-                    : null;
-            state.lineIndex = body?.lineIndex ?? 0;
-        });
+        return this.manual(
+            client,
+            (state) => {
+                state.songId =
+                    body?.songId != null && body.songId !== ""
+                        ? Number(body.songId)
+                        : null;
+
+                // Start at the top unless an explicit position is given
+                // (the "Did you mean..." suggestions pass one).
+                state.lineIndex = Number.isInteger(body?.lineIndex)
+                    ? (body.lineIndex as number)
+                    : 0;
+            },
+            true, // reset heard words
+        );
     }
 
     @SubscribeMessage("line:set")
@@ -338,6 +347,7 @@ export class LyricsGateway implements OnGatewayDisconnect {
     private manual(
         client: Socket,
         mutate: (state: SessionStateDto) => void,
+        resetHeard = false,
     ) {
         const sessionId = this.operatorSession(client);
 
@@ -374,8 +384,15 @@ export class LyricsGateway implements OnGatewayDisconnect {
 
             const runtime = this.rt(sessionId);
 
-            // Ignore words already heard after manual navigation.
-            runtime.offset = runtime.utter?.length ?? 0;
+            if (resetHeard) {
+                // New song: forget everything heard so far.
+                runtime.utter = [];
+                runtime.last = [];
+                runtime.offset = 0;
+            } else {
+                // Manual navigation: ignore words already heard.
+                runtime.offset = runtime.utter?.length ?? 0;
+            }
 
             await this.broadcastState(sessionId);
 
