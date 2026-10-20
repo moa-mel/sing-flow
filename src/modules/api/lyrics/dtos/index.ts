@@ -31,5 +31,6 @@ export interface Runtime {
     dirty?: boolean;
     final?: boolean;
     holdUntil?: number; // ms timestamp; ignore matching until then
+    touchedAt?: number; // last time the position changed
 }
 

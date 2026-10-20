@@ -47,6 +47,8 @@ export class LyricsGateway implements OnGatewayDisconnect {
     private static readonly MAX_HEARD = 24;
     /** After picking a song, ignore leftover speech for this long (ms). */
     private static readonly SETTLE_MS = 1500;
+    /** An operator connecting after this much inactivity starts at line 0. */
+    private static readonly RESET_AFTER_MS = 60_000;
 
     constructor(
         config: ConfigService,
@@ -87,6 +89,28 @@ export class LyricsGateway implements OnGatewayDisconnect {
         client.data = { sessionId, role };
 
         await client.join(this.room(sessionId));
+
+        // A fresh operator connection starts the song from the top.
+        // A quick reconnect (network blip mid-song) keeps its position.
+        if (role === "operator") {
+            const runtime = this.rt(sessionId);
+            const idleMs = Date.now() - (runtime.touchedAt ?? 0);
+
+            if (idleMs > LyricsGateway.RESET_AFTER_MS) {
+                await this.enqueue(sessionId, async () => {
+                    const state = { ...(await this.getState(sessionId)) };
+                    state.lineIndex = 0;
+                    this.saveState(sessionId, state);
+
+                    runtime.utter = [];
+                    runtime.last = [];
+                    runtime.offset = 0;
+                    runtime.holdUntil =
+                        Date.now() + LyricsGateway.SETTLE_MS;
+                });
+            }
+        }
+
         client.emit("state", await this.buildState(sessionId));
 
         return { ok: true };
@@ -101,7 +125,7 @@ export class LyricsGateway implements OnGatewayDisconnect {
             ? this.runtimes.get(sessionId)
             : undefined;
 
-        if (runtime?.ownerSocketId === client.id) {
+        if (runtime && runtime.ownerSocketId === client.id) {
             this.stopStream(runtime);
         }
     }
@@ -157,7 +181,7 @@ export class LyricsGateway implements OnGatewayDisconnect {
 
         const runtime = this.runtimes.get(sessionId);
 
-        if (runtime?.ownerSocketId !== client.id) return;
+        if (!runtime || runtime.ownerSocketId !== client.id) return;
 
         const audio = Buffer.isBuffer(chunk)
             ? chunk
@@ -204,6 +228,7 @@ export class LyricsGateway implements OnGatewayDisconnect {
                 state.lineIndex = Number.isInteger(body?.lineIndex)
                     ? (body.lineIndex as number)
                     : 0;
+                state.lineIndex = 0;
             },
             true, // reset heard words
         );
@@ -473,7 +498,10 @@ export class LyricsGateway implements OnGatewayDisconnect {
     }
 
     private saveState(sessionId: string, state: SessionStateDto) {
-        this.rt(sessionId).state = state;
+        const runtime = this.rt(sessionId);
+
+        runtime.state = state;
+        runtime.touchedAt = Date.now();
 
         // Persist in the background; don't block the broadcast.
         void this.sessions
