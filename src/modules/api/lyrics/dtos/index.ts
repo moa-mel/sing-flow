@@ -28,4 +28,8 @@ export interface Runtime {
     state?: SessionStateDto;
     pending?: SttResultDto;
     draining?: boolean;
+    utter?: string[];   // rolling buffer of recent words
+    last?: string[];    // previous raw result, used to detect cumulative text
+    dirty?: boolean;
+    final?: boolean;
 }

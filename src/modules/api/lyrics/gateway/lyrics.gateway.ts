@@ -42,6 +42,7 @@ export class LyricsGateway implements OnGatewayDisconnect {
         Awaited<ReturnType<SongService["fetchSongs"]>>
     >();
     private readonly operatorKey?: string;
+    private static readonly MAX_HEARD = 24;
 
     constructor(
         config: ConfigService,
@@ -115,8 +116,11 @@ export class LyricsGateway implements OnGatewayDisconnect {
 
         this.stopStream(runtime);
 
+
         runtime.offset = 0;
-        runtime.heardLen = 0;
+        runtime.utter = [];
+        runtime.last = [];
+        runtime.dirty = false;
         runtime.ownerSocketId = client.id;
 
         runtime.stream = this.stt.open(
@@ -217,68 +221,76 @@ export class LyricsGateway implements OnGatewayDisconnect {
      * Coalesce transcripts: if results arrive faster than we can
      * process them, only the newest one is handled.
      */
-    private async scheduleTranscript(
-        sessionId: string,
-        result: SttResultDto,
-    ) {
+    /** Merge a result into the rolling word buffer. Loses nothing. */
+    private ingest(sessionId: string, result: SttResultDto) {
         const runtime = this.rt(sessionId);
 
-        // Never overwrite a pending final with an interim
-        // (finals reset the offset).
-        if (!runtime.pending?.isFinal || result.isFinal) {
-            runtime.pending = result;
+        this.server.to(this.room(sessionId)).emit("transcript", result);
+
+        const incoming = words(result.text);
+        if (incoming.length === 0) return;
+
+        const last = runtime.last ?? [];
+        const n = Math.min(3, last.length);
+
+        // Cumulative text: it starts with the same words as the previous result.
+        const cumulative =
+            last.length > 0 &&
+            incoming.length >= last.length &&
+            incoming.slice(0, n).join(" ") === last.slice(0, n).join(" ");
+
+        const fresh = cumulative ? incoming.slice(last.length) : incoming;
+
+        let utter = [...(runtime.utter ?? []), ...fresh];
+        const over = utter.length - LyricsGateway.MAX_HEARD;
+        if (over > 0) {
+            utter = utter.slice(over);
+            runtime.offset = Math.max(0, runtime.offset - over);
         }
+
+        runtime.utter = utter;
+        runtime.last = result.isFinal ? [] : incoming;
+        runtime.dirty = true;
+        if (result.isFinal) runtime.final = true;
+    }
+
+    private async scheduleTranscript(sessionId: string, result: SttResultDto) {
+        const runtime = this.rt(sessionId);
+
+        this.ingest(sessionId, result);
 
         if (runtime.draining) return;
         runtime.draining = true;
 
         try {
-            while (runtime.pending) {
-                const next = runtime.pending;
-                runtime.pending = undefined;
-
-                await this.enqueue(sessionId, () =>
-                    this.onTranscript(sessionId, next),
-                );
+            while (runtime.dirty) {
+                runtime.dirty = false;
+                await this.enqueue(sessionId, () => this.matchStep(sessionId));
             }
         } catch (error) {
             this.logger.error(
-                `Transcript handling failed: ${error instanceof Error
-                    ? error.message
-                    : String(error)
-                }`,
+                `Transcript handling failed: ${error instanceof Error ? error.message : String(error)}`,
             );
         } finally {
             runtime.draining = false;
         }
     }
 
-    private async onTranscript(
-        sessionId: string,
-        result: SttResultDto,
-    ) {
+    private async matchStep(sessionId: string) {
         const runtime = this.rt(sessionId);
         const room = this.room(sessionId);
 
-        this.server.to(room).emit("transcript", result);
+        const heard = runtime.utter ?? [];
+        const isFinal = runtime.final === true;
+        runtime.final = false;
 
-        const heard = words(result.text);
-        this.logger.debug(
-            `[${result.isFinal ? "FINAL" : "interim"}] heard=${heard.length} offset=${runtime.offset} line=${(await this.getState(sessionId)).lineIndex} :: ${result.text}`,
-        );
-        runtime.heardLen = heard.length;
-
-        // Work on a copy so the cache is only updated via saveState.
         const state = { ...(await this.getState(sessionId)) };
         let changed = false;
 
         if (!state.songId) {
-            // Identify the song when no song is selected.
             const searchResult = await this.search.search(heard);
             const hit = searchResult.autoLoad;
-            const song = hit
-                ? await this.getSong(hit.songId)
-                : undefined;
+            const song = hit ? await this.getSong(hit.songId) : undefined;
 
             if (hit && song) {
                 state.songId = hit.songId;
@@ -287,19 +299,12 @@ export class LyricsGateway implements OnGatewayDisconnect {
                     0,
                     Math.max(0, song.lines.length - 1),
                 );
-
                 runtime.offset = heard.length;
                 changed = true;
-            } else if (
-                result.isFinal &&
-                searchResult.hits.length > 0
-            ) {
-                this.server
-                    .to(room)
-                    .emit("search:suggestions", searchResult.hits);
+            } else if (isFinal && searchResult.hits.length > 0) {
+                this.server.to(room).emit("search:suggestions", searchResult.hits);
             }
         } else {
-            // Advance through the currently selected song.
             const song = await this.getSong(state.songId);
 
             if (song) {
@@ -319,18 +324,15 @@ export class LyricsGateway implements OnGatewayDisconnect {
             }
         }
 
-        if (result.isFinal) {
-            // the next utterance starts with a fresh transcript
-            runtime.offset = 0;
-            runtime.heardLen = 0;
-        }
+        this.logger.debug(
+            `heard=[${heard.slice(-8).join(" ")}] offset=${runtime.offset} line=${state.lineIndex} changed=${changed}`,
+        );
 
         if (changed) {
             this.saveState(sessionId, state);
             await this.broadcastState(sessionId);
         }
     }
-
     // Helpers
 
     private manual(
@@ -373,7 +375,7 @@ export class LyricsGateway implements OnGatewayDisconnect {
             const runtime = this.rt(sessionId);
 
             // Ignore words already heard after manual navigation.
-            runtime.offset = runtime.heardLen;
+            runtime.offset = runtime.utter?.length ?? 0;
 
             await this.broadcastState(sessionId);
 
@@ -452,7 +454,7 @@ export class LyricsGateway implements OnGatewayDisconnect {
         runtime.stream?.close();
         runtime.stream = undefined;
         runtime.ownerSocketId = undefined;
-        runtime.pending = undefined;
+        runtime.dirty = false;
     }
 
     private operatorSession(client: Socket): string | null {
