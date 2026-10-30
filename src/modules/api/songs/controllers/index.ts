@@ -26,21 +26,4 @@ export class SongController {
         return this.songService.fetchSongs(id);
     }
 
-    @Post()
-    createSong(@Body() input: SongInputDto) {
-        return this.songService.createSongs(input);
-    }
-
-    @Patch(":id")
-    updateSong(
-        @Param("id", ParseIntPipe) id: number,
-        @Body() input: Partial<SongInputDto>,
-    ) {
-        return this.songService.updateSongs(id, input);
-    }
-
-    @Delete(":id")
-    removeSong(@Param("id", ParseIntPipe) id: number) {
-        return this.songService.removeSongs(id);
-    }
 }

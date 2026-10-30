@@ -2,18 +2,10 @@ import { IsIn, IsOptional, IsString } from "class-validator";
 import { SttResultDto } from "../../stt/dtos";
 import { SessionStateDto } from "../../session/dtos";
 
-export type Role = "operator" | "display";
 
 export class JoinBody {
-    @IsString()
-    sessionId!: string;
-
-    @IsIn(["operator", "display"])
-    role!: Role;
-
-    @IsOptional()
-    @IsString()
-    key?: string;
+  @IsString()
+  sessionId!: string;
 }
 
 export interface Runtime {

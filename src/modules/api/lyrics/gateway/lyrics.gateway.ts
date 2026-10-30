@@ -57,64 +57,32 @@ export class LyricsGateway implements OnGatewayDisconnect {
         private readonly matching: MatchService,
         private readonly search: SearchService,
         private readonly stt: SttService,
-    ) {
-        this.operatorKey =
-            config.get<string>("OPERATOR_KEY") || undefined;
-    }
+    ) { }
 
     // Connection
+
 
     @SubscribeMessage("session:join")
     async join(
         @ConnectedSocket() client: Socket,
         @MessageBody() body: JoinBody,
     ) {
-        const { sessionId, role } = body ?? ({} as JoinBody);
+        const sessionId = body?.sessionId;
 
-        if (
-            !sessionId ||
-            (role !== "operator" && role !== "display")
-        ) {
-            return { ok: false, error: "invalid join" };
+        if (!sessionId || typeof sessionId !== "string") {
+            return { ok: false, error: "invalid session" };
         }
 
-        if (
-            role === "operator" &&
-            this.operatorKey &&
-            body.key !== this.operatorKey
-        ) {
-            return { ok: false, error: "unauthorized" };
-        }
-
-        client.data = { sessionId, role };
+        // No operator key or role required for this workflow.
+        client.data = { sessionId, role: "operator" };
 
         await client.join(this.room(sessionId));
-
-        // A fresh operator connection starts the song from the top.
-        // A quick reconnect (network blip mid-song) keeps its position.
-        if (role === "operator") {
-            const runtime = this.rt(sessionId);
-            const idleMs = Date.now() - (runtime.touchedAt ?? 0);
-
-            if (idleMs > LyricsGateway.RESET_AFTER_MS) {
-                await this.enqueue(sessionId, async () => {
-                    const state = { ...(await this.getState(sessionId)) };
-                    state.lineIndex = 0;
-                    this.saveState(sessionId, state);
-
-                    runtime.utter = [];
-                    runtime.last = [];
-                    runtime.offset = 0;
-                    runtime.holdUntil =
-                        Date.now() + LyricsGateway.SETTLE_MS;
-                });
-            }
-        }
 
         client.emit("state", await this.buildState(sessionId));
 
         return { ok: true };
     }
+
 
     handleDisconnect(client: Socket) {
         const sessionId = client.data?.sessionId as
@@ -190,18 +158,20 @@ export class LyricsGateway implements OnGatewayDisconnect {
         runtime.stream?.send(audio);
     }
 
+
     @SubscribeMessage("audio:stop")
     stopAudio(@ConnectedSocket() client: Socket) {
         const sessionId = this.operatorSession(client);
 
         if (!sessionId) {
-            return { ok: false, error: "unauthorized" };
+            return { ok: false, error: "invalid session" };
         }
 
         this.stopStream(this.rt(sessionId));
 
         return { ok: true };
     }
+
 
     // Manual controls
 
@@ -521,11 +491,15 @@ export class LyricsGateway implements OnGatewayDisconnect {
         runtime.dirty = false;
     }
 
+
     private operatorSession(client: Socket): string | null {
-        return client.data?.role === "operator"
-            ? (client.data.sessionId as string)
+        const sessionId = client.data?.sessionId;
+
+        return typeof sessionId === "string" && sessionId.length > 0
+            ? sessionId
             : null;
     }
+
 
     private room(sessionId: string): string {
         return `session:${sessionId}`;
