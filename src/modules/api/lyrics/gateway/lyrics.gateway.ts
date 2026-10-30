@@ -67,18 +67,21 @@ export class LyricsGateway implements OnGatewayDisconnect {
         @ConnectedSocket() client: Socket,
         @MessageBody() body: JoinBody,
     ) {
+        this.logger.log(`session:join from ${client.id} → ${JSON.stringify(body)}`);
+
         const sessionId = body?.sessionId;
 
         if (!sessionId || typeof sessionId !== "string") {
+            this.logger.warn(`Invalid sessionId from ${client.id}`);
             return { ok: false, error: "invalid session" };
         }
 
-        // No operator key or role required for this workflow.
         client.data = { sessionId, role: "operator" };
-
         await client.join(this.room(sessionId));
 
-        client.emit("state", await this.buildState(sessionId));
+        const state = await this.buildState(sessionId);
+        this.logger.log(`Emitting initial state for ${sessionId}: ${JSON.stringify(state)}`);
+        client.emit("state", state);
 
         return { ok: true };
     }
@@ -103,6 +106,7 @@ export class LyricsGateway implements OnGatewayDisconnect {
     @SubscribeMessage("audio:start")
     startAudio(@ConnectedSocket() client: Socket) {
         const sessionId = this.operatorSession(client);
+        this.logger.log(`audio:start from ${client.id}, session=${sessionId}`);
 
         if (!sessionId) {
             return { ok: false, error: "unauthorized" };
@@ -350,6 +354,7 @@ export class LyricsGateway implements OnGatewayDisconnect {
         );
 
         if (changed) {
+            this.logger.log(`>>> ADVANCING session ${sessionId} to line ${state.lineIndex}`);
             this.saveState(sessionId, state);
             await this.broadcastState(sessionId);
         }
