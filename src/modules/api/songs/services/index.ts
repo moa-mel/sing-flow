@@ -1,48 +1,38 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
 import { InjectRedis } from "@nestjs-modules/ioredis";
 import Redis from "ioredis";
 
 import { CACHE_TTL_SECONDS } from "@/config/constant";
-import { normalize } from "@/utils/text";
 import { SongDto, SongListDto } from "../dtos";
-import { HymnLib } from "@/lib/hymn";
-import { ExternalHymn } from "@/lib/hymn/interfaces";
-import { hymnBaseUrl } from "@/config";
+import { PrismaService } from "@/modules/core/prisma/services";
 
 @Injectable()
 export class SongService {
-    private readonly hymnLib: HymnLib;
-
     constructor(
+        private readonly prisma: PrismaService,
         @InjectRedis() private readonly redis: Redis,
-    ) {
-        this.hymnLib = new HymnLib({
-            baseUrl: hymnBaseUrl,
-        });
-    }
+    ) {}
 
     private cacheKey(id: number): string {
         return `song:${id}`;
     }
 
-    private getLines(lyrics: ExternalHymn["Lyrics"]): string[] {
-        if (!lyrics) return [];
-
-        return lyrics.flatMap((verse) =>
-            verse.text
-                .split(/\r?\n/)
-                .map((line) => line.trim())
-                .filter((line) => normalize(line).length > 0),
-        );
-    }
-
-    // Fetch all hymns
+    // Fetch all songs from PostgreSQL
     async fetchAllHymn() {
-        return this.hymnLib.fetchAllHymn();
+        return this.prisma.song.findMany({
+            select: {
+                id: true,
+                externalId: true,
+                title: true,
+                author: true,
+            },
+            orderBy: {
+                title: "asc",
+            },
+        });
     }
 
-    // Fetch hymn by ID
+    // Fetch a song by its LOCAL database ID
     async fetchHymnById(id: number) {
         const cacheKey = this.cacheKey(id);
 
@@ -52,92 +42,87 @@ export class SongService {
             return JSON.parse(cached);
         }
 
-        const hymn = (await this.hymnLib.fetchHymnById(
-            id,
-        )) as ExternalHymn;
+        const song = await this.prisma.song.findUnique({
+            where: { id },
+            include: {
+                lines: {
+                    orderBy: {
+                        position: "asc",
+                    },
+                },
+            },
+        });
 
-        if (!hymn || !hymn.ID) {
-            throw new NotFoundException("Hymn not found");
+        if (!song) {
+            throw new NotFoundException("Song not found");
         }
 
         await this.redis.set(
             cacheKey,
-            JSON.stringify(hymn),
+            JSON.stringify(song),
             "EX",
             CACHE_TTL_SECONDS,
         );
 
-        return hymn;
+        return song;
     }
 
-    // Fetch hymns by category
+    // Fetch songs by category
+    // Keep using the external API because your current Song model
+    // does not store category information.
     async fetchHymnByCategories(categoryId: number) {
-        const cacheKey = `hymns:category:${categoryId}`;
-
-        const cached = await this.redis.get(cacheKey);
-
-        if (cached) {
-            return JSON.parse(cached);
-        }
-
-        const hymns = await this.hymnLib.fetchHymnByCategories(categoryId);
-
-        await this.redis.set(
-            cacheKey,
-            JSON.stringify(hymns),
-            "EX",
-            CACHE_TTL_SECONDS,
+        throw new NotFoundException(
+            "Category filtering is not yet available for locally stored songs",
         );
-
-        return hymns;
     }
 
     // Existing method used by LyricsGateway
     async fetchSongs(id: number): Promise<SongDto> {
-        const hymn = (await this.fetchHymnById(id)) as ExternalHymn;
+        const song = await this.fetchHymnById(id);
 
         return {
-            id: hymn.ID,
-            title: hymn.Title,
-            lines: this.getLines(hymn.Lyrics),
+            id: song.id,
+            title: song.title,
+            lines: song.lines.map((line) => line.text),
         };
     }
 
-    // Existing song listing with title filtering
     // Paginated song listing with title filtering
     async listSongs(options: SongListDto) {
-        const hymns = (await this.fetchAllHymn()) as ExternalHymn[];
-
-        // Filter by title
-        const filteredHymns = options.title
-            ? hymns.filter((hymn) =>
-                hymn.Title?.toLowerCase().includes(
-                    options.title!.trim().toLowerCase(),
-                ),
-            )
-            : hymns;
-
-        // Format and sort songs
-        const songs = filteredHymns
-            .map((hymn) => ({
-                id: hymn.ID,
-                title: hymn.Title,
-                author: hymn.Author ?? null,
-            }))
-            .sort((a, b) => a.title.localeCompare(b.title));
-
-        // Pagination
         const page = Math.max(1, options.page || 1);
         const limit = Math.max(1, Math.min(options.limit || 20, 100));
 
-        const total = songs.length;
-        const totalPages = Math.ceil(total / limit);
-        const startIndex = (page - 1) * limit;
+        const where = options.title?.trim()
+            ? {
+                title: {
+                    contains: options.title.trim(),
+                    mode: "insensitive" as const,
+                },
+            }
+            : {};
 
-        const data = songs.slice(startIndex, startIndex + limit);
+        const [songs, total] = await Promise.all([
+            this.prisma.song.findMany({
+                where,
+                select: {
+                    id: true,
+                    title: true,
+                    author: true,
+                },
+                orderBy: {
+                    title: "asc",
+                },
+                skip: (page - 1) * limit,
+                take: limit,
+            }),
+
+            this.prisma.song.count({ where }),
+        ]);
+
+        const totalPages = Math.ceil(total / limit);
 
         return {
-            data,
+            data: songs,
             pagination: {
                 total,
                 page,
