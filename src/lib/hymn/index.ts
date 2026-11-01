@@ -1,3 +1,4 @@
+
 import Axios, {
     AxiosError,
     AxiosInstance,
@@ -11,18 +12,40 @@ export class HymnLib {
 
     constructor(protected instanceOptions: HymnOptions) {
         this.axios = Axios.create({
-            baseURL: `${this.instanceOptions.baseUrl}`,
+            baseURL: this.instanceOptions.baseUrl,
             headers: {
                 Accept: 'application/json',
                 'Content-Type': 'application/json',
             },
         });
+
+        console.log(
+            'Hymn API base URL:',
+            this.instanceOptions.baseUrl,
+        );
+
+        console.log(
+            'Full request URL:',
+            this.axios.getUri({ url: '/api/hymns.json' }),
+        );
     }
 
     private handleErrors(error: AxiosError<any>): never {
+        console.error('Hymn API request failed:', {
+            baseURL: error.config?.baseURL,
+            url: error.config?.url,
+            fullURL: error.config?.baseURL
+                ? `${error.config.baseURL}${error.config.url}`
+                : error.config?.url,
+            status: error.response?.status,
+            response: error.response?.data,
+        });
+
         switch (error.response?.status) {
             case 400:
-                throw new HymnValidationError(error.response.data?.message);
+                throw new HymnValidationError(
+                    error.response.data?.message,
+                );
 
             default:
                 throw new HymnGenericError(
@@ -33,7 +56,7 @@ export class HymnLib {
 
     async fetchAllHymn() {
         try {
-            const { data } = await this.axios.get("/api/hymns.json");
+            const { data } = await this.axios.get('/api/hymns.json');
             return data;
         } catch (error) {
             if (!Axios.isAxiosError(error)) throw error;
