@@ -37,5 +37,5 @@ export const redisPort = parseInt(process.env.REDIS_PORT || '6379', 10);
 export const redisPassword = process.env.REDIS_PASSWORD;
 export const redisUsername = process.env.REDIS_USERNAME || 'default';
 
-export const hymnBaseUrl = process.env.HYMN_API_URL || 'https://www.example.com';
+export const hymnBaseUrl = process.env.HYMN_API_URL || 'https://hymnal.rindra.org';
 
