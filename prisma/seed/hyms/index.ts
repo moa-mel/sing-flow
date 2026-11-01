@@ -132,4 +132,111 @@ export const songs = [
       'Will be forever mine.',
     ],
   },
+  {
+  title: 'Glory to God on High',
+  author: 'James Allen',
+  lines: [
+    'Glory to God on high!',
+    'Let earth and skies reply,',
+    'Praise ye His name!',
+    'His love and grace adore,',
+    'Who all our sorrows bore;',
+    'Sing aloud evermore,',
+    'Worthy the Lamb!',
+
+    'While they around the throne',
+    'Cheerfully join in one,',
+    'Praising His name;',
+    'Ye who have felt His blood',
+    'Sealing your peace with God,',
+    'Sound His dear name abroad,',
+    'Worthy the Lamb!',
+
+    'Join, all ye ransomed race,',
+    'Our Lord and God to bless:',
+    'Praise ye His name!',
+    'In Him we will rejoice,',
+    'And make a joyful noise,',
+    'Shouting with heart and voice,',
+    'Worthy the Lamb!',
+
+    'Soon must we change our place,',
+    'Yet will we never cease',
+    'Praising His name:',
+    'To Him our songs we bring;',
+    'Hail Him our gracious King;',
+    'And through all ages sing,',
+    'Worthy the Lamb!',
+  ],
+},
+{
+  title: 'Guide Me, O Thou Great Jehovah',
+  author: 'William Williams',
+  lines: [
+    'Guide me, O Thou great Jehovah,',
+    'Pilgrim through this barren land;',
+    'I am weak, but Thou art mighty,',
+    'Hold me with Thy powerful hand.',
+    'Bread of heaven, Bread of heaven,',
+    'Feed me till I want no more;',
+    'Feed me till I want no more.',
+
+    'Open now the crystal fountain,',
+    'Whence the healing stream doth flow;',
+    'Let the fire and cloudy pillar',
+    'Lead me all my journey through.',
+    'Strong Deliverer, Strong Deliverer,',
+    'Be Thou still my strength and shield;',
+    'Be Thou still my strength and shield.',
+
+    'When I tread the verge of Jordan,',
+    'Bid my anxious fears subside;',
+    'Death of death and hell’s destruction,',
+    'Land me safe on Canaan’s side.',
+    'Songs of praises, Songs of praises,',
+    'I will ever give to Thee;',
+    'I will ever give to Thee.',
+  ],
+},
+{
+  title: 'Just a Closer Walk with Thee',
+  author: 'Anonymous / Traditional (with original additions)',
+  lines: [
+    // Verse 1
+    'I am weak, but Thou art strong;',
+    'Jesus, keep me from all wrong;',
+    "I'll be satisfied as long",
+    'As I walk, let me walk close to Thee.',
+
+    // Refrain
+    'Just a closer walk with Thee,',
+    'Grant it, Jesus, is my plea,',
+    'Daily walking close to Thee,',
+    'Let it be, dear Lord, let it be.',
+
+    // Original verse 2
+    'Through the storms and trials I face,',
+    'Keep my heart in truth and grace;',
+    'Be my guide along the way,',
+    'Walk beside me every day.',
+
+    // Refrain
+    'Just a closer walk with Thee,',
+    'Grant it, Jesus, is my plea,',
+    'Daily walking close to Thee,',
+    'Let it be, dear Lord, let it be.',
+
+    // Original verse 3
+    'When my journey here is done,',
+    'And the final race is run,',
+    'Lead me to eternal rest,',
+    'Where Your presence makes me blest.',
+
+    // Refrain
+    'Just a closer walk with Thee,',
+    'Grant it, Jesus, is my plea,',
+    'Daily walking close to Thee,',
+    'Let it be, dear Lord, let it be.',
+  ],
+},
 ];
