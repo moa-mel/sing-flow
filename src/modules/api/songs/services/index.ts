@@ -1,79 +1,126 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
-import { PrismaService } from "@/modules/core/prisma/services";
-import { normalize } from "@/utils/text";
-import { SongDto, SongInputDto, SongListDto } from "../dtos";
+import { ConfigService } from "@nestjs/config";
 import { InjectRedis } from "@nestjs-modules/ioredis";
 import Redis from "ioredis";
+
 import { CACHE_TTL_SECONDS } from "@/config/constant";
+import { normalize } from "@/utils/text";
+import { SongDto, SongListDto } from "../dtos";
+import { HymnLib } from "@/lib/hymn";
+import { ExternalHymn } from "@/lib/hymn/interfaces";
+import { hymnBaseUrl } from "@/config";
 
 @Injectable()
 export class SongService {
+    private readonly hymnLib: HymnLib;
+
     constructor(
-        private readonly prisma: PrismaService,
         @InjectRedis() private readonly redis: Redis,
-    ) { }
+    ) {
+        this.hymnLib = new HymnLib({
+            baseUrl: hymnBaseUrl,
+        });
+    }
 
     private cacheKey(id: number): string {
         return `song:${id}`;
     }
 
-    private toLines(lyrics: string) {
-        return lyrics
-            .split(/\r?\n/)
-            .map((text) => text.trim())
-            .filter((text) => normalize(text).length > 0)
-            .map((text, position) => ({
-                position,
-                text,
-                normalized: normalize(text),
-            }));
+    private getLines(lyrics: ExternalHymn["Lyrics"]): string[] {
+        if (!lyrics) return [];
+
+        return lyrics.flatMap((verse) =>
+            verse.text
+                .split(/\r?\n/)
+                .map((line) => line.trim())
+                .filter((line) => normalize(line).length > 0),
+        );
     }
 
-    async fetchSongs(id: number): Promise<SongDto> {
-        const cached = await this.redis.get(this.cacheKey(id));
+    // Fetch all hymns
+    async fetchAllHymn() {
+        return this.hymnLib.fetchAllHymn();
+    }
+
+    // Fetch hymn by ID
+    async fetchHymnById(id: number) {
+        const cacheKey = this.cacheKey(id);
+
+        const cached = await this.redis.get(cacheKey);
 
         if (cached) {
-            return JSON.parse(cached) as SongDto;
+            return JSON.parse(cached);
         }
 
-        const song = await this.prisma.song.findUnique({
-            where: { id },
-            include: {
-                lines: { orderBy: { position: "asc" } },
-            },
-        });
+        const hymn = (await this.hymnLib.fetchHymnById(
+            id,
+        )) as ExternalHymn;
 
-        if (!song) {
-            throw new NotFoundException("Song not found");
+        if (!hymn || !hymn.ID) {
+            throw new NotFoundException("Hymn not found");
         }
-
-        const result: SongDto = {
-            id: song.id,
-            title: song.title,
-            lines: song.lines.map((line) => line.text),
-        };
 
         await this.redis.set(
-            this.cacheKey(id),
-            JSON.stringify(result),
+            cacheKey,
+            JSON.stringify(hymn),
             "EX",
             CACHE_TTL_SECONDS,
         );
 
-        return result;
+        return hymn;
     }
 
+    // Fetch hymns by category
+    async fetchHymnByCategories(categoryId: number) {
+        const cacheKey = `hymns:category:${categoryId}`;
+
+        const cached = await this.redis.get(cacheKey);
+
+        if (cached) {
+            return JSON.parse(cached);
+        }
+
+        const hymns = await this.hymnLib.fetchHymnByCategories(categoryId);
+
+        await this.redis.set(
+            cacheKey,
+            JSON.stringify(hymns),
+            "EX",
+            CACHE_TTL_SECONDS,
+        );
+
+        return hymns;
+    }
+
+    // Existing method used by LyricsGateway
+    async fetchSongs(id: number): Promise<SongDto> {
+        const hymn = (await this.fetchHymnById(id)) as ExternalHymn;
+
+        return {
+            id: hymn.ID,
+            title: hymn.Title,
+            lines: this.getLines(hymn.Lyrics),
+        };
+    }
+
+    // Existing song listing with title filtering
     async listSongs(options: SongListDto) {
-        return this.prisma.song.findMany({
-            where: options.title
-                ? { title: { contains: options.title, mode: "insensitive" } }
-                : undefined,
-            select: {
-                id: true,
-                title: true,
-                author: true,
-            },
-            orderBy: { title: "asc" },
-        });
+        const hymns = (await this.fetchAllHymn()) as ExternalHymn[];
+
+        const filteredHymns = options.title
+            ? hymns.filter((hymn) =>
+                hymn.Title.toLowerCase().includes(
+                    options.title!.toLowerCase(),
+                ),
+            )
+            : hymns;
+
+        return filteredHymns
+            .map((hymn) => ({
+                id: hymn.ID,
+                title: hymn.Title,
+                author: hymn.Author ?? null,
+            }))
+            .sort((a, b) => a.title.localeCompare(b.title));
     }
 }

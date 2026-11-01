@@ -16,22 +16,6 @@ const runtimeEnvironment: RequiredEnvironment[] = [
     name: 'ALLOWED_DOMAINS',
     type: RequiredEnvironmentTypes.String,
   },
-//   {
-//     name: 'JWT_SECRET',
-//     type: RequiredEnvironmentTypes.String,
-//   },
-//   {
-//     name: 'REFRESH_JWT_SECRET',
-//     type: RequiredEnvironmentTypes.String,
-//   },
-//   {
-//     name: 'JWT_SECRET_EXPIRES',
-//     type: RequiredEnvironmentTypes.String,
-//   },
-//   {
-//     name: 'REFRESH_JWT_SECRET_EXPIRES',
-//     type: RequiredEnvironmentTypes.String,
-//   },
 
 ];
 
@@ -46,16 +30,12 @@ export const isProdEnvironment = process.env.ENVIRONMENT === 'production';
 
 export const frontendDevOrigin = [/^http:\/\/localhost:\d+$/];
 
-// export const jwtSecret: string = process.env.JWT_SECRET!;
+
 
 export const redisHost = process.env.REDIS_HOST;
 export const redisPort = parseInt(process.env.REDIS_PORT || '6379', 10);
 export const redisPassword = process.env.REDIS_PASSWORD;
 export const redisUsername = process.env.REDIS_USERNAME || 'default';
 
-// export const refreshJwtSecret: string = process.env.REFRESH_JWT_SECRET!;
+export const hymnBaseUrl = process.env.HYMN_API_URL || 'https://www.example.com';
 
-// export const jwtExpiresIn: string = process.env.JWT_SECRET_EXPIRES!;
-
-// export const refreshTokenExpiresIn: string =
-//   process.env.REFRESH_JWT_SECRET_EXPIRES!;

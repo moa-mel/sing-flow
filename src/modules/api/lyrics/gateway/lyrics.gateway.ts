@@ -202,7 +202,6 @@ export class LyricsGateway implements OnGatewayDisconnect {
                 state.lineIndex = Number.isInteger(body?.lineIndex)
                     ? (body.lineIndex as number)
                     : 0;
-                state.lineIndex = 0;
             },
             true, // reset heard words
         );
