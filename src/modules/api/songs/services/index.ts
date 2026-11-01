@@ -104,23 +104,48 @@ export class SongService {
     }
 
     // Existing song listing with title filtering
+    // Paginated song listing with title filtering
     async listSongs(options: SongListDto) {
         const hymns = (await this.fetchAllHymn()) as ExternalHymn[];
 
+        // Filter by title
         const filteredHymns = options.title
             ? hymns.filter((hymn) =>
-                hymn.Title.toLowerCase().includes(
-                    options.title!.toLowerCase(),
+                hymn.Title?.toLowerCase().includes(
+                    options.title!.trim().toLowerCase(),
                 ),
             )
             : hymns;
 
-        return filteredHymns
+        // Format and sort songs
+        const songs = filteredHymns
             .map((hymn) => ({
                 id: hymn.ID,
                 title: hymn.Title,
                 author: hymn.Author ?? null,
             }))
             .sort((a, b) => a.title.localeCompare(b.title));
+
+        // Pagination
+        const page = Math.max(1, options.page || 1);
+        const limit = Math.max(1, Math.min(options.limit || 20, 100));
+
+        const total = songs.length;
+        const totalPages = Math.ceil(total / limit);
+        const startIndex = (page - 1) * limit;
+
+        const data = songs.slice(startIndex, startIndex + limit);
+
+        return {
+            data,
+            pagination: {
+                total,
+                page,
+                limit,
+                totalPages,
+                hasNextPage: page < totalPages,
+                hasPreviousPage: page > 1,
+            },
+        };
     }
 }
