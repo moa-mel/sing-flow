@@ -296,137 +296,52 @@ export class LyricsGateway implements OnGatewayDisconnect {
         }
     }
 
-    // private async matchStep(sessionId: string) {
-    //     const runtime = this.rt(sessionId);
-    //     const room = this.room(sessionId);
-
-    //     const heard = runtime.utter ?? [];
-    //     const isFinal = runtime.final === true;
-    //     runtime.final = false;
-
-    //     const state = { ...(await this.getState(sessionId)) };
-    //     let changed = false;
-
-    //     if (!state.songId) {
-    //         // No song selected: identify it by voice.
-    //         const searchResult = await this.search.search(heard);
-    //         const hit = searchResult.autoLoad;
-    //         const song = hit ? await this.getSong(hit.songId) : undefined;
-
-    //         if (hit && song) {
-    //             state.songId = hit.songId;
-    //             state.lineIndex = clamp(
-    //                 hit.lineIndex + 1,
-    //                 0,
-    //                 Math.max(0, song.lines.length - 1),
-    //             );
-    //             runtime.offset = heard.length;
-    //             changed = true;
-    //         } else if (isFinal && searchResult.hits.length > 0) {
-    //             this.server
-    //                 .to(room)
-    //                 .emit("search:suggestions", searchResult.hits);
-    //         }
-    //     } else if (Date.now() >= (runtime.holdUntil ?? 0)) {
-    //         // Song selected: advance through it (after the settle period).
-    //         const song = await this.getSong(state.songId);
-
-    //         if (song) {
-    //             const match = this.matching.advance(
-    //                 song.lines,
-    //                 state.lineIndex,
-    //                 heard,
-    //                 runtime.offset,
-    //             );
-
-    //             runtime.offset = match.offset;
-
-    //             if (match.advanced) {
-    //                 state.lineIndex = match.lineIndex;
-    //                 changed = true;
-    //             }
-    //         }
-    //     }
-
-    //     this.logger.debug(
-    //         `heard=[${heard.slice(-8).join(" ")}] offset=${runtime.offset} line=${state.lineIndex} changed=${changed}`,
-    //     );
-
-    //     if (changed) {
-    //         this.logger.log(`>>> ADVANCING session ${sessionId} to line ${state.lineIndex}`);
-    //         this.saveState(sessionId, state);
-    //         await this.broadcastState(sessionId);
-    //     }
-    // }
-
-
     private async matchStep(sessionId: string) {
         const runtime = this.rt(sessionId);
         const room = this.room(sessionId);
 
         const heard = runtime.utter ?? [];
         const isFinal = runtime.final === true;
-
         runtime.final = false;
 
-        const state = {
-            ...(await this.getState(sessionId)),
-        };
-
+        const state = { ...(await this.getState(sessionId)) };
         let changed = false;
 
         if (!state.songId) {
             // No song selected: identify it by voice.
             const searchResult = await this.search.search(heard);
             const hit = searchResult.autoLoad;
-
-            const song = hit
-                ? await this.getSong(hit.songId)
-                : undefined;
+            const song = hit ? await this.getSong(hit.songId) : undefined;
 
             if (hit && song) {
                 state.songId = hit.songId;
-
                 state.lineIndex = clamp(
-                    hit.lineIndex,
+                    hit.lineIndex + 1,
                     0,
                     Math.max(0, song.lines.length - 1),
                 );
-
                 runtime.offset = heard.length;
                 changed = true;
-            } else if (
-                isFinal &&
-                searchResult.hits.length > 0
-            ) {
+            } else if (isFinal && searchResult.hits.length > 0) {
                 this.server
                     .to(room)
-                    .emit(
-                        "search:suggestions",
-                        searchResult.hits,
-                    );
+                    .emit("search:suggestions", searchResult.hits);
             }
-        } else if (
-            Date.now() >= (runtime.holdUntil ?? 0)
-        ) {
+        } else if (Date.now() >= (runtime.holdUntil ?? 0)) {
+            // Song selected: advance through it (after the settle period).
             const song = await this.getSong(state.songId);
 
             if (song) {
-                // A single STT result may contain more than one line.
-                // Keep checking until there are no more confirmed matches.
-                for (let step = 0; step < song.lines.length; step++) {
-                    const match = this.matching.advance(
-                        song.lines,
-                        state.lineIndex,
-                        heard,
-                        runtime.offset,
-                    );
+                const match = this.matching.advance(
+                    song.lines,
+                    state.lineIndex,
+                    heard,
+                    runtime.offset,
+                );
 
-                    runtime.offset = match.offset;
+                runtime.offset = match.offset;
 
-                    if (!match.advanced) break;
-                    if (match.lineIndex <= state.lineIndex) break;
-
+                if (match.advanced) {
                     state.lineIndex = match.lineIndex;
                     changed = true;
                 }
@@ -434,17 +349,11 @@ export class LyricsGateway implements OnGatewayDisconnect {
         }
 
         this.logger.debug(
-            `heard=[${heard.slice(-8).join(" ")}] ` +
-            `offset=${runtime.offset} ` +
-            `line=${state.lineIndex} ` +
-            `changed=${changed}`,
+            `heard=[${heard.slice(-8).join(" ")}] offset=${runtime.offset} line=${state.lineIndex} changed=${changed}`,
         );
 
         if (changed) {
-            this.logger.log(
-                `>>> ADVANCING session ${sessionId} to line ${state.lineIndex}`,
-            );
-
+            this.logger.log(`>>> ADVANCING session ${sessionId} to line ${state.lineIndex}`);
             this.saveState(sessionId, state);
             await this.broadcastState(sessionId);
         }
