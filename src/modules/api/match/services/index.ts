@@ -5,13 +5,15 @@ import { dice, words } from "@/utils/text";
 
 @Injectable()
 export class MatchService {
-    constructor(private prisma: PrismaService) {}
+    constructor(private prisma: PrismaService) { }
 
     static readonly WINDOW = 4;
     static readonly TAIL = 4;
-    static readonly SIMILARITY = 0.6;
-    static readonly MIN_WORDS = 2;
-    static readonly CHECKPOINTS = [1, 0.7];
+    static readonly SIMILARITY = 0.68;
+    static readonly MIN_WORDS = 3;
+
+    // Require the singer to get close to the end of the line.
+    static readonly CHECKPOINTS = [1, 0.85];
 
     advance(
         lines: string[],
@@ -110,6 +112,15 @@ export class MatchService {
                 advanced: false,
             };
         }
+
+        console.log({
+    current,
+    matchedLine: current + best.k,
+    // checkpoint: best.checkpoint,
+    similarity: best.similarity,
+    consumedWords: best.end,
+    available: available.join(" "),
+});
 
         return {
             lineIndex: Math.min(
