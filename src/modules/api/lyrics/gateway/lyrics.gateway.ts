@@ -414,11 +414,7 @@ export class LyricsGateway implements OnGatewayDisconnect {
             if (song) {
                 // A single STT result may contain more than one line.
                 // Keep checking until there are no more confirmed matches.
-                for (
-                    let step = 0;
-                    step < song.lines.length;
-                    step++
-                ) {
+                for (let step = 0; step < song.lines.length; step++) {
                     const match = this.matching.advance(
                         song.lines,
                         state.lineIndex,
@@ -428,13 +424,8 @@ export class LyricsGateway implements OnGatewayDisconnect {
 
                     runtime.offset = match.offset;
 
-                    if (!match.advanced) {
-                        break;
-                    }
-
-                    if (match.lineIndex <= state.lineIndex) {
-                        break;
-                    }
+                    if (!match.advanced) break;
+                    if (match.lineIndex <= state.lineIndex) break;
 
                     state.lineIndex = match.lineIndex;
                     changed = true;

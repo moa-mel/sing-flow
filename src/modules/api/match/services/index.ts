@@ -1,4 +1,3 @@
-
 import { PrismaService } from "@/modules/core/prisma/services";
 import { Injectable } from "@nestjs/common";
 import { MatchResultDto } from "../dtos";
@@ -8,14 +7,11 @@ import { dice, words } from "@/utils/text";
 export class MatchService {
     constructor(private prisma: PrismaService) {}
 
-    // How many future lines we can search when a line is skipped.
     static readonly WINDOW = 4;
-
-    // Number of opening words used to identify the next line.
-    static readonly PREFIX_WORDS = 3;
-
-    // Similarity required for a fuzzy phrase match.
-    static readonly SIMILARITY = 0.82;
+    static readonly TAIL = 4;
+    static readonly SIMILARITY = 0.6;
+    static readonly MIN_WORDS = 2;
+    static readonly CHECKPOINTS = [1, 0.7];
 
     advance(
         lines: string[],
@@ -23,10 +19,7 @@ export class MatchService {
         heard: string[],
         offset: number,
     ): MatchResultDto {
-        const used = Math.min(
-            Math.max(0, offset),
-            heard.length,
-        );
+        const used = Math.min(Math.max(0, offset), heard.length);
 
         if (current >= lines.length - 1) {
             return {
@@ -38,7 +31,7 @@ export class MatchService {
 
         const available = heard.slice(used);
 
-        if (available.length < 2) {
+        if (available.length === 0) {
             return {
                 lineIndex: current,
                 offset: used,
@@ -46,18 +39,10 @@ export class MatchService {
             };
         }
 
-        let best: {
-            k: number;
-            end: number;
-            similarity: number;
-        } | null = null;
+        let best: { k: number; end: number; similarity: number } | null = null;
 
-        // IMPORTANT:
-        // Start at current + 1.
-        // We only advance when we hear the beginning of a FUTURE line.
-        // Repeating the current line therefore does not advance the display.
         for (
-            let k = 1;
+            let k = 0;
             k <= MatchService.WINDOW &&
             current + k < lines.length;
             k++
@@ -66,67 +51,54 @@ export class MatchService {
 
             if (lineWords.length === 0) continue;
 
-            const prefix = lineWords.slice(
-                0,
-                MatchService.PREFIX_WORDS,
-            );
+            for (const fraction of MatchService.CHECKPOINTS) {
+                const checkpoint = Math.max(
+                    1,
+                    Math.round(lineWords.length * fraction),
+                );
 
-            // A single short word is too ambiguous to identify a line.
-            if (
-                prefix.length === 1 &&
-                prefix[0].length < 5
-            ) {
-                continue;
-            }
-
-            if (available.length < prefix.length) {
-                continue;
-            }
-
-            // Look for the next line's opening phrase anywhere
-            // in the newly unconsumed transcript.
-            for (
-                let start = 0;
-                start + prefix.length <= available.length;
-                start++
-            ) {
-                const heardPhrase = available
-                    .slice(start, start + prefix.length);
-
-                let similarity: number;
-
-                if (prefix.length === 1) {
-                    similarity =
-                        heardPhrase[0] === prefix[0] ? 1 : 0;
-                } else {
-                    similarity = dice(
-                        heardPhrase.join(" "),
-                        prefix.join(" "),
-                    );
-                }
+                const count = Math.min(
+                    MatchService.TAIL,
+                    checkpoint,
+                    available.length,
+                );
 
                 if (
-                    similarity < MatchService.SIMILARITY
+                    count < Math.min(MatchService.MIN_WORDS, checkpoint)
                 ) {
                     continue;
                 }
 
-                const end = start + prefix.length;
+                const expected = lineWords
+                    .slice(checkpoint - count, checkpoint)
+                    .join(" ");
 
-                // Prefer the earliest recognized next-line phrase.
-                if (
-                    !best ||
-                    end < best.end ||
-                    (
-                        end === best.end &&
-                        similarity > best.similarity
-                    )
+                // Try recent transcript windows, preferring the earliest
+                // matching window so subsequent lyric lines remain available.
+                for (
+                    let start = 0;
+                    start + count <= available.length;
+                    start++
                 ) {
-                    best = {
-                        k,
-                        end,
-                        similarity,
-                    };
+                    const actual = available
+                        .slice(start, start + count)
+                        .join(" ");
+
+                    const similarity = dice(actual, expected);
+
+                    if (similarity < MatchService.SIMILARITY) {
+                        continue;
+                    }
+
+                    const end = start + count;
+
+                    if (
+                        !best ||
+                        end < best.end ||
+                        (end === best.end && similarity > best.similarity)
+                    ) {
+                        best = { k, end, similarity };
+                    }
                 }
             }
         }
@@ -140,13 +112,12 @@ export class MatchService {
         }
 
         return {
-            // The matched future line is now the current line.
-            lineIndex: current + best.k,
-
-            // Consume only the matched opening phrase.
-            // Remaining words can still identify subsequent lines.
+            lineIndex: Math.min(
+                current + best.k + 1,
+                lines.length - 1,
+            ),
+            // Consume only the words used to confirm this checkpoint.
             offset: used + best.end,
-
             advanced: true,
         };
     }
