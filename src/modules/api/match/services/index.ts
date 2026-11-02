@@ -1,29 +1,47 @@
-import { PrismaService } from "@/modules/core/prisma/services";
 import { Injectable } from "@nestjs/common";
-import { MatchResultDto } from "../dtos";
-import { dice, words } from "@/utils/text";
+
+export interface MatchResult {
+    lineIndex: number;
+    offset: number;
+    advanced: boolean;
+    similarity?: number;
+    matchedLine?: number;
+    consumedWords?: number;
+}
 
 @Injectable()
 export class MatchService {
-    constructor(private prisma: PrismaService) { }
+    private static readonly TAIL = 4;
+    private static readonly MIN_WORDS = 3;
+    private static readonly SIMILARITY = 0.6;
 
-    static readonly WINDOW = 4;
-    static readonly TAIL = 4;
-    static readonly SIMILARITY = 0.68;
-    static readonly MIN_WORDS = 3;
-
-    // Require the singer to get close to the end of the line.
-    static readonly CHECKPOINTS = [1, 0.85];
-
+    /**
+     * Advances at most one line per call.
+     *
+     * `offset` points to the first unconsumed word in `heard`.
+     * The matcher compares only the latest words against the end
+     * of the current lyric line.
+     */
     advance(
         lines: string[],
         current: number,
         heard: string[],
         offset: number,
-    ): MatchResultDto {
-        const used = Math.min(Math.max(0, offset), heard.length);
+    ): MatchResult {
+        const lastLine = lines.length - 1;
 
-        if (current >= lines.length - 1) {
+        if (current >= lastLine) {
+            return {
+                lineIndex: current,
+                offset: Math.min(offset, heard.length),
+                advanced: false,
+            };
+        }
+
+        const used = Math.min(offset, heard.length);
+        const available = heard.length - used;
+
+        if (available < MatchService.MIN_WORDS) {
             return {
                 lineIndex: current,
                 offset: used,
@@ -31,9 +49,9 @@ export class MatchService {
             };
         }
 
-        const available = heard.slice(used);
+        const currentLineWords = this.words(lines[current] ?? "");
 
-        if (available.length === 0) {
+        if (currentLineWords.length < MatchService.MIN_WORDS) {
             return {
                 lineIndex: current,
                 offset: used,
@@ -41,95 +59,87 @@ export class MatchService {
             };
         }
 
-        let best: { k: number; end: number; similarity: number } | null = null;
+        // Require a match against the actual end of the current line.
+        const expected = currentLineWords.slice(-MatchService.TAIL);
+        const recent = heard.slice(Math.max(used, heard.length - expected.length));
 
-        for (
-            let k = 0;
-            k <= MatchService.WINDOW &&
-            current + k < lines.length;
-            k++
-        ) {
-            const lineWords = words(lines[current + k]);
+        const similarity = this.dice(
+            recent.join(" "),
+            expected.join(" "),
+        );
 
-            if (lineWords.length === 0) continue;
-
-            for (const fraction of MatchService.CHECKPOINTS) {
-                const checkpoint = Math.max(
-                    1,
-                    Math.round(lineWords.length * fraction),
-                );
-
-                const count = Math.min(
-                    MatchService.TAIL,
-                    checkpoint,
-                    available.length,
-                );
-
-                if (
-                    count < Math.min(MatchService.MIN_WORDS, checkpoint)
-                ) {
-                    continue;
-                }
-
-                const expected = lineWords
-                    .slice(checkpoint - count, checkpoint)
-                    .join(" ");
-
-                // Try recent transcript windows, preferring the earliest
-                // matching window so subsequent lyric lines remain available.
-                for (
-                    let start = 0;
-                    start + count <= available.length;
-                    start++
-                ) {
-                    const actual = available
-                        .slice(start, start + count)
-                        .join(" ");
-
-                    const similarity = dice(actual, expected);
-
-                    if (similarity < MatchService.SIMILARITY) {
-                        continue;
-                    }
-
-                    const end = start + count;
-
-                    if (
-                        !best ||
-                        end < best.end ||
-                        (end === best.end && similarity > best.similarity)
-                    ) {
-                        best = { k, end, similarity };
-                    }
-                }
-            }
-        }
-
-        if (!best) {
+        if (similarity < MatchService.SIMILARITY) {
             return {
                 lineIndex: current,
                 offset: used,
                 advanced: false,
+                similarity,
+                matchedLine: current,
+                consumedWords: 0,
             };
         }
-
-        console.log({
-    current,
-    matchedLine: current + best.k,
-    // checkpoint: best.checkpoint,
-    similarity: best.similarity,
-    consumedWords: best.end,
-    available: available.join(" "),
-});
 
         return {
-            lineIndex: Math.min(
-                current + best.k + 1,
-                lines.length - 1,
-            ),
-            // Consume only the words used to confirm this checkpoint.
-            offset: used + best.end,
+            lineIndex: Math.min(current + 1, lastLine),
+            // Consume the transcript currently available so it cannot
+            // trigger another advance until new words arrive.
+            offset: heard.length,
             advanced: true,
+            similarity,
+            matchedLine: current,
+            consumedWords: available,
         };
+    }
+
+    private words(text: string): string[] {
+        return text
+            .toLowerCase()
+            .replace(/[’']/g, "")
+            .replace(/[^a-z0-9\s]/g, " ")
+            .split(/\s+/)
+            .filter(Boolean);
+    }
+
+    /**
+     * Sørensen–Dice similarity over word bigrams.
+     * Handles small speech-recognition differences without relying
+     * on an exact string match.
+     */
+    private dice(a: string, b: string): number {
+        const aWords = this.words(a);
+        const bWords = this.words(b);
+
+        if (aWords.length === 0 || bWords.length === 0) {
+            return 0;
+        }
+
+        if (aWords.length === 1 || bWords.length === 1) {
+            return aWords[0] === bWords[0] ? 1 : 0;
+        }
+
+        const bigrams = (words: string[]) => {
+            const result = new Map<string, number>();
+
+            for (let i = 0; i < words.length - 1; i++) {
+                const pair = `${words[i]} ${words[i + 1]}`;
+                result.set(pair, (result.get(pair) ?? 0) + 1);
+            }
+
+            return result;
+        };
+
+        const aBigrams = bigrams(aWords);
+        const bBigrams = bigrams(bWords);
+
+        let intersection = 0;
+
+        for (const [pair, count] of aBigrams) {
+            intersection += Math.min(count, bBigrams.get(pair) ?? 0);
+        }
+
+        const total = [...aBigrams.values()].reduce((sum, n) => sum + n, 0)
+            + [...bBigrams.values()].reduce((sum, n) => sum + n, 0);
+
+        return total === 0 ? 0 : (2 * intersection) / total;
     }
 }
