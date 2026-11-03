@@ -229,37 +229,62 @@ export class LyricsGateway implements OnGatewayDisconnect {
     // Transcript matching
 
     /** Merge a result into the rolling word buffer. Loses nothing. */
+
+    /** Replace the previous interim transcript instead of appending revisions. */
     private ingest(sessionId: string, result: SttResultDto) {
         const runtime = this.rt(sessionId);
 
-        this.server.to(this.room(sessionId)).emit("transcript", result);
+        this.server
+            .to(this.room(sessionId))
+            .emit("transcript", result);
 
         const incoming = words(result.text);
         if (incoming.length === 0) return;
 
-        const last = runtime.last ?? [];
-        const n = Math.min(3, last.length);
+        const previousInterim = runtime.last ?? [];
+        let utter = [...(runtime.utter ?? [])];
 
-        // Cumulative text: it starts with the same words as the previous result.
-        const cumulative =
-            last.length > 0 &&
-            incoming.length >= last.length &&
-            incoming.slice(0, n).join(" ") === last.slice(0, n).join(" ");
+        // Remove the previous interim transcript from the end of the buffer.
+        // It is provisional text and may have been revised by Gemini.
+        if (previousInterim.length > 0) {
+            const previousLength = previousInterim.length;
+            const suffix = utter.slice(-previousLength);
 
-        const fresh = cumulative ? incoming.slice(last.length) : incoming;
+            const matchesPrevious =
+                suffix.length === previousLength &&
+                suffix.every((word, index) => word === previousInterim[index]);
 
-        let utter = [...(runtime.utter ?? []), ...fresh];
+            if (matchesPrevious) {
+                utter = utter.slice(0, -previousLength);
+            }
+        }
+
+        // Keep the committed offset within the remaining stable transcript.
+        runtime.offset = Math.min(runtime.offset ?? 0, utter.length);
+
+        // Append the newest version of the transcript.
+        utter.push(...incoming);
+
+        // Keep only the most recent words.
         const over = utter.length - LyricsGateway.MAX_HEARD;
+
         if (over > 0) {
             utter = utter.slice(over);
             runtime.offset = Math.max(0, runtime.offset - over);
         }
 
         runtime.utter = utter;
+
+        // Interim text is provisional; final text is committed.
         runtime.last = result.isFinal ? [] : incoming;
+
         runtime.dirty = true;
-        if (result.isFinal) runtime.final = true;
+
+        if (result.isFinal) {
+            runtime.final = true;
+        }
     }
+
 
     private async scheduleTranscript(
         sessionId: string,
