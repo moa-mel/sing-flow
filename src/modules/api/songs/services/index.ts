@@ -11,7 +11,7 @@ export class SongService {
     constructor(
         private readonly prisma: PrismaService,
         @InjectRedis() private readonly redis: Redis,
-    ) {}
+    ) { }
 
     private cacheKey(id: number): string {
         return `song:${id}`;
@@ -56,6 +56,16 @@ export class SongService {
         if (!song) {
             throw new NotFoundException("Song not found");
         }
+
+        console.log('[SONG DATABASE CHECK]', {
+            id: song?.id,
+            title: song?.title,
+            lineCount: song?.lines.length,
+            lines: song?.lines.map((line) => ({
+                position: line.position,
+                text: line.text,
+            })),
+        });
 
         await this.redis.set(
             cacheKey,
