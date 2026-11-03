@@ -1,3 +1,4 @@
+
 import { PrismaService } from "@/modules/core/prisma/services";
 import { Injectable } from "@nestjs/common";
 import { MatchResultDto } from "../dtos";
@@ -5,19 +6,17 @@ import { dice, words } from "@/utils/text";
 
 @Injectable()
 export class MatchService {
-    constructor(private prisma: PrismaService) { }
+    constructor(private prisma: PrismaService) {}
 
-    static readonly WINDOW = 4;        // how many lines ahead to consider
-    static readonly TAIL = 4;          // how many recent heard words to compare
-    static readonly SIMILARITY = 0.6;
-    static readonly MIN_WORDS = 2;
-    // Advance when the singer reaches the end of a line, or ~70% through it.
-    static readonly CHECKPOINTS = [1, 0.7];
+    static readonly TAIL = 4;
+    static readonly SIMILARITY = 0.75;
+    static readonly MIN_WORDS = 3;
 
     /**
-     * `offset` = number of heard words already used (consumed).
-     * Returns the new offset, which is always heard.length after an advance,
-     * so STT dropping words can never cause drift.
+     * Only advance when the beginning of the NEXT line
+     * is recognised in the correct order.
+     *
+     * Repeated words from later stanzas cannot cause jumps.
      */
     advance(
         lines: string[],
@@ -25,50 +24,79 @@ export class MatchService {
         heard: string[],
         offset: number,
     ): MatchResultDto {
-        // Interim results can be revised shorter, so never trust a stale offset.
-        let used = Math.min(offset, heard.length);
+        const used = Math.min(offset, heard.length);
 
         if (current >= lines.length - 1) {
-            return { lineIndex: current, offset: used, advanced: false };
+            return {
+                lineIndex: current,
+                offset: used,
+                advanced: false,
+            };
         }
 
         const available = heard.length - used;
-        if (available < 1) {
-            return { lineIndex: current, offset: used, advanced: false };
+
+        if (available < MatchService.MIN_WORDS) {
+            return {
+                lineIndex: current,
+                offset: used,
+                advanced: false,
+            };
         }
 
-        let best: { k: number; sim: number } | null = null;
+        // Only consider the immediately following line.
+        const nextWords = words(lines[current + 1]);
 
-        for (let k = 0; k <= MatchService.WINDOW && current + k < lines.length; k++) {
-            const lw = words(lines[current + k]);
-            if (lw.length === 0) continue;
+        if (nextWords.length < MatchService.MIN_WORDS) {
+            return {
+                lineIndex: current,
+                offset: used,
+                advanced: false,
+            };
+        }
 
-            for (const frac of MatchService.CHECKPOINTS) {
-                const p = Math.max(1, Math.round(lw.length * frac));
-                const m = Math.min(MatchService.TAIL, p, available);
-                if (m < Math.min(MatchService.MIN_WORDS, p)) continue;
+        const maxWords = Math.min(
+            MatchService.TAIL,
+            available,
+            nextWords.length,
+        );
 
-                const sim = dice(
-                    heard.slice(heard.length - m).join(" "),
-                    lw.slice(p - m, p).join(" "),
-                );
+        let matched = false;
 
-                if (
-                    sim >= MatchService.SIMILARITY &&
-                    (!best || sim > best.sim + 0.05)
-                ) {
-                    best = { k, sim };
-                }
+        // Require at least three words matching the beginning
+        // of the next line, in the correct order.
+        for (
+            let count = maxWords;
+            count >= MatchService.MIN_WORDS;
+            count--
+        ) {
+            const heardTail = heard
+                .slice(heard.length - count)
+                .join(" ");
+
+            const nextLinePrefix = nextWords
+                .slice(0, count)
+                .join(" ");
+
+            const similarity = dice(heardTail, nextLinePrefix);
+
+            if (similarity >= MatchService.SIMILARITY) {
+                matched = true;
+                break;
             }
         }
 
-        if (!best) {
-            return { lineIndex: current, offset: used, advanced: false };
+        if (!matched) {
+            return {
+                lineIndex: current,
+                offset: used,
+                advanced: false,
+            };
         }
 
         return {
-            lineIndex: Math.min(current + best.k + 1, lines.length - 1),
-            offset: heard.length, // consume everything heard so far
+            lineIndex: current + 1,
+            offset: heard.length,
             advanced: true,
         };
     }
