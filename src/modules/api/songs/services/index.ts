@@ -57,16 +57,6 @@ export class SongService {
             throw new NotFoundException("Song not found");
         }
 
-        console.log('[SONG DATABASE CHECK]', {
-            id: song?.id,
-            title: song?.title,
-            lineCount: song?.lines.length,
-            lines: song?.lines.map((line) => ({
-                position: line.position,
-                text: line.text,
-            })),
-        });
-
         await this.redis.set(
             cacheKey,
             JSON.stringify(song),
