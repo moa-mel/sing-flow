@@ -37,10 +37,6 @@ export class LyricsGateway implements OnGatewayDisconnect {
 
     private readonly logger = new Logger(LyricsGateway.name);
     private readonly runtimes = new Map<string, Runtime>();
-    private readonly songCache = new Map<
-        number,
-        Awaited<ReturnType<SongService["fetchSongs"]>>
-    >();
     private readonly operatorKey?: string;
 
     /** Max recent words kept for matching. */
@@ -60,7 +56,6 @@ export class LyricsGateway implements OnGatewayDisconnect {
     ) { }
 
     // Connection
-
 
     @SubscribeMessage("session:join")
     async join(
@@ -452,14 +447,7 @@ export class LyricsGateway implements OnGatewayDisconnect {
     }
 
     private async getSong(id: number) {
-        let song = this.songCache.get(id);
-
-        if (!song) {
-            song = await this.songs.fetchSongs(id);
-            if (song) this.songCache.set(id, song);
-        }
-
-        return song;
+        return this.songs.fetchSongs(id);
     }
 
     private async getState(sessionId: string) {
